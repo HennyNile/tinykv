@@ -17,3 +17,6 @@ In this part, we need to implement user-friendly high-level service handler to s
 * Create a transcation in badgerDB via  ***txn := badger.DB.NewTransaction(true)***.
 * ***item := iter.Item()*** and ***iter.Next()***  
 ***iter.Item()*** returns a pointer which points a pointer which points current item. Then if you execute ***iter.Next()***, ***item*** return by the ***iter.Item()*** won't change. However, if you access current item via ***iter.Item()***, you get the next item. You should pay attention to their use.
+
+## Reading Material
+* https://github.com/HennyNile/tinykv/blob/course/doc/project1-StandaloneKV.md
