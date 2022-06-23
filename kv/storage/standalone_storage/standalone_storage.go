@@ -54,28 +54,6 @@ func (s *StandAloneStorage) Write(ctx *kvrpcpb.Context, batch []storage.Modify) 
 		writebatch.Reset()
 	}
 	return nil
-
-	/*
-		for _, m := range batch {
-			switch m.Data.(type) {
-			case storage.Put:
-				data := m.Data.(storage.Put)
-				cf, key, value := data.Cf, data.Key, data.Value
-				err := engine_util.PutCF(s.DB, cf, key, value)
-				if err != nil {
-					return err
-				}
-			case storage.Delete:
-				data := m.Data.(storage.Delete)
-				cf, key := data.Cf, data.Key
-				err := engine_util.DeleteCF(s.DB, cf, key)
-				if err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	*/
 }
 
 type StandAloneStorageReader struct {
@@ -84,8 +62,8 @@ type StandAloneStorageReader struct {
 }
 
 func (standalonestoragereader *StandAloneStorageReader) GetCF(cf string, key []byte) ([]byte, error) {
-	val, err := engine_util.GetCF(standalonestoragereader.inner.DB, cf, key)
-	return val, err
+	val, _ := engine_util.GetCF(standalonestoragereader.inner.DB, cf, key)
+	return val, nil
 }
 
 func (standalonestoragereader *StandAloneStorageReader) IterCF(cf string) engine_util.DBIterator {
