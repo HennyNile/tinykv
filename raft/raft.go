@@ -135,6 +135,8 @@ type Raft struct {
 	// heartbeat interval, should send
 	heartbeatTimeout int
 	// baseline of election interval
+	initialElectionTimeout int
+	// a randome timeout based on initialelectionTimeout
 	electionTimeout int
 	// number of ticks since it reached last heartbeatTimeout.
 	// only leader keeps heartbeatElapsed.
@@ -170,11 +172,12 @@ func newRaft(c *Config) *Raft {
 	entries, hardState := c.Storage.(*MemoryStorage).ents[1:], c.Storage.(*MemoryStorage).hardState
 
 	// initialize a RaftLog
-	raftLog := RaftLog{entries: entries, stabled: uint64(len(entries)), committed: hardState.Commit, storage: c.Storage}
+	raftLog := RaftLog{entries: entries, stabled: uint64(len(entries)), rawnode_stabled: uint64(len(entries)), committed: hardState.Commit, storage: c.Storage}
 
 	// initialize a Raft
 	raft := Raft{id: c.ID, Term:hardState.Term, Vote: hardState.Vote, heartbeatTimeout: c.HeartbeatTick, 
-		electionTimeout: c.ElectionTick, RaftLog: &raftLog, Prs: make(map[uint64]*Progress)}
+		initialElectionTimeout: c.ElectionTick, electionTimeout: c.ElectionTick + rand.Intn(c.ElectionTick),
+		RaftLog: &raftLog, Prs: make(map[uint64]*Progress)}
 	for _, id := range c.peers {
 		raft.Prs[id] = &Progress{Match: 0, Next: 1}
 	}
@@ -252,7 +255,7 @@ func (r *Raft) becomeFollower(term uint64, lead uint64) {
 func (r *Raft) becomeCandidate() {
 	// Your Code Here (2A).
 	r.votes = make(map[uint64]bool)
-	r.State, r.votes[r.id], r.electionElapsed, r.electionTimeout, r.Term = StateCandidate, true, 0, 10 + rand.Intn(10), r.Term + 1
+	r.State, r.votes[r.id], r.electionElapsed, r.electionTimeout, r.Term = StateCandidate, true, 0, r.initialElectionTimeout + rand.Intn(r.initialElectionTimeout), r.Term + 1
 }
 
 // becomeLeader transform this peer's state to leader
@@ -270,6 +273,8 @@ func (r *Raft) becomeLeader() {
 			append(r.RaftLog.entries, pb.Entry{Index: index, Term: r.Term}), index, index+1
 		if len(r.Prs) == 1 {
 			r.RaftLog.committed = r.RaftLog.committed + 1
+			r.RaftLog.rawnode_stabled = r.RaftLog.stabled
+			r.RaftLog.stabled = r.RaftLog.stabled + 1
 		}
 		
 		// broadcast new entry
@@ -431,6 +436,8 @@ func (r *Raft) Step(m pb.Message) error {
 			}
 			if len(r.Prs) == 1 {
 				r.RaftLog.committed += uint64(len(m.Entries))
+				r.RaftLog.rawnode_stabled = r.RaftLog.stabled
+				r.RaftLog.stabled += uint64(len(m.Entries))
 			}
 		// case StateFollower:
 		// 	r.msgs = append(r.msgs, m)
@@ -514,13 +521,13 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 						lastIndex = uint64(e_i)
 					}
 				} 
+
 				// remove conflict and afterward entries
 				if conflict == 1 {
 					conflict = 2
 					r.RaftLog.entries = r.RaftLog.entries[0: e.Index-1]
 					if r.RaftLog.stabled > e.Index-1 {
-						len_rl_s_ents := len(r.RaftLog.storage.(*MemoryStorage).ents)
-						r.RaftLog.storage.(*MemoryStorage).ents = r.RaftLog.storage.(*MemoryStorage).ents[:len_rl_s_ents - int(r.RaftLog.stabled+1-e.Index)]
+						r.RaftLog.rawnode_stabled = e.Index-1
 						r.RaftLog.stabled = e.Index-1
 					}
 				}
@@ -545,7 +552,6 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 				// remove afterward from storage
 				if r.RaftLog.stabled > r.RaftLog.committed {
 					r.RaftLog.stabled = r.RaftLog.committed
-					r.RaftLog.storage.(*MemoryStorage).ents = r.RaftLog.storage.(*MemoryStorage).ents[:r.RaftLog.stabled+1]
 				}
 			// select smaller of m.Commit and lastIndex to be new commit
 			} else if m.Commit >= r.RaftLog.committed {

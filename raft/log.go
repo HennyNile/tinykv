@@ -42,6 +42,10 @@ type RaftLog struct {
 	// Everytime handling `Ready`, the unstabled logs will be included.
 	stabled uint64
 
+	// log entries which rawnode_stabled <= index <= stabled has been stable in raft
+	// but has not been stored in stable storage. 
+	rawnode_stabled uint64
+
 	// all entries that have not yet compact.
 	entries []pb.Entry
 
@@ -58,7 +62,8 @@ func newLog(storage Storage) *RaftLog {
 	// Your Code Here (2A).
 	// recover entries, hardState from storage
 	entries, hardState := storage.(*MemoryStorage).ents[1:], storage.(*MemoryStorage).hardState
-	raftLog := RaftLog{entries: entries, stabled: uint64(len(entries)), committed: hardState.Commit, storage: storage}
+	raftLog := RaftLog{entries: entries, stabled: uint64(len(entries)), rawnode_stabled: uint64(len(entries)), 
+		committed: hardState.Commit, storage: storage}
 
 	return &raftLog
 }
