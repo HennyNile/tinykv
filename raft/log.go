@@ -42,10 +42,6 @@ type RaftLog struct {
 	// Everytime handling `Ready`, the unstabled logs will be included.
 	stabled uint64
 
-	// log entries which rawnode_stabled <= index <= stabled has been stable in raft
-	// but has not been stored in stable storage. 
-	rawnode_stabled uint64
-
 	// all entries that have not yet compact.
 	entries []pb.Entry
 
@@ -54,6 +50,7 @@ type RaftLog struct {
 	pendingSnapshot *pb.Snapshot
 
 	// Your Data Here (2A).
+	offset uint64
 }
 
 // newLog returns log using the given storage. It recovers the log
@@ -61,10 +58,16 @@ type RaftLog struct {
 func newLog(storage Storage) *RaftLog {
 	// Your Code Here (2A).
 	// recover entries, hardState from storage
-	entries, hardState := storage.(*MemoryStorage).ents[1:], storage.(*MemoryStorage).hardState
-	raftLog := RaftLog{entries: entries, stabled: uint64(len(entries)), rawnode_stabled: uint64(len(entries)), 
-		committed: hardState.Commit, storage: storage}
+	if storage == nil {
+		return nil
+	}
 
+	firstIndex, _ := storage.FirstIndex()
+	lastIndex, _ := storage.LastIndex()
+	entries, _ := storage.Entries(firstIndex, lastIndex+1)
+	hardState, _, _ := storage.InitialState()
+	raftLog := RaftLog{entries: entries, stabled: lastIndex,
+		committed: hardState.Commit, applied: firstIndex - 1, offset: firstIndex, storage: storage}
 	return &raftLog
 }
 
@@ -78,23 +81,26 @@ func (l *RaftLog) maybeCompact() {
 // unstableEntries return all the unstable entries
 func (l *RaftLog) unstableEntries() []pb.Entry {
 	// Your Code Here (2A).
-	return l.entries[l.stabled: len(l.entries)]
+	return l.entries[int(l.stabled-l.offset+1):len(l.entries)]
 }
 
 // nextEnts returns all the committed but not applied entries
 func (l *RaftLog) nextEnts() (ents []pb.Entry) {
 	// Your Code Here (2A).
-	return l.entries[l.applied: l.committed]
+	return l.entries[l.applied-l.offset+1 : l.committed+uint64(1)-l.offset]
 }
 
 // LastIndex return the last index of the log entries
 func (l *RaftLog) LastIndex() uint64 {
 	// Your Code Here (2A).
-	return uint64(len(l.entries)) 
+	if len(l.entries) != 0 {
+		return l.entries[len(l.entries)-1].Index
+	}
+	return l.offset - uint64(1)
 }
 
 // Term return the term of the entry in the given index
 func (l *RaftLog) Term(i uint64) (uint64, error) {
 	// Your Code Here (2A).
-	return l.entries[int(i-1)].Term, nil
+	return l.entries[i-l.offset].Term, nil
 }

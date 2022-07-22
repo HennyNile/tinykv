@@ -146,21 +146,32 @@ func (rn *RawNode) Ready() Ready {
 	r := rn.Raft
 
 	// entries
-	var entries []pb.Entry
-	if r.RaftLog.rawnode_stabled <= uint64(len(r.RaftLog.entries)) {
-		entries = r.RaftLog.entries[r.RaftLog.rawnode_stabled: r.RaftLog.stabled]
+	entries := []pb.Entry{}
+	if r.RaftLog.stabled < uint64(len(r.RaftLog.entries)) {
+		entries = r.RaftLog.unstableEntries()
 	}
-	r.RaftLog.rawnode_stabled = r.RaftLog.stabled
-	
+
 	// committed entries
 	committedEntries := r.RaftLog.nextEnts()
 
-	return Ready{Entries: entries, CommittedEntries: committedEntries}
+	// append messages
+	var messages []pb.Message
+	if len(r.msgs) != 0 {
+		messages = r.msgs
+		r.msgs = nil
+	}
+
+	return Ready{Entries: entries, CommittedEntries: committedEntries, Messages: messages}
 }
 
 // HasReady called when RawNode user need to check if any Ready pending.
 func (rn *RawNode) HasReady() bool {
 	// Your Code Here (2A).
+	r := rn.Raft
+	hasMessages, hasUnstable, hasUnapplied := len(r.msgs) > 0, r.RaftLog.stabled < uint64(len(r.RaftLog.entries)), r.RaftLog.applied < r.RaftLog.committed
+	if hasMessages || hasUnstable || hasUnapplied {
+		return true
+	}
 	return false
 }
 
@@ -169,7 +180,8 @@ func (rn *RawNode) HasReady() bool {
 func (rn *RawNode) Advance(rd Ready) {
 	// Your Code Here (2A).
 	r := rn.Raft
-	r.RaftLog.applied += 1
+	r.RaftLog.stabled += uint64(len(rd.Entries))
+	r.RaftLog.applied += uint64(len(rd.CommittedEntries))
 	return
 }
 
